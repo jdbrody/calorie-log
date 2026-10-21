@@ -98,6 +98,11 @@ main .wrap{display:flex;flex-direction:column;gap:22px;padding-block:4px calc(12
 .item .nm div{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .nm small{display:block;color:var(--muted);font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item .kc{font-weight:800;font-stretch:85%;font-size:1.05rem}
+.items li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.items .item{border-bottom:0;flex:1;min-width:0}
+.iconbtn.del{width:40px;height:40px;color:var(--muted)}
+.iconbtn.del:hover{color:var(--over)}
+.iconbtn.del svg{width:19px;height:19px}
 .tag{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border:1px solid var(--line);border-radius:3px;margin-right:4px;color:var(--muted);vertical-align:1px}
 .empty{border:1.5px dashed var(--line);padding:22px 18px;text-align:center;color:var(--muted)}
 .empty strong{display:block;color:var(--ink);font-size:1.05rem;margin-bottom:4px}
@@ -163,6 +168,28 @@ textarea.in{min-height:96px;resize:vertical}
 .toast button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;font-weight:800;padding:6px 10px}
 
 /* Live scanner: always dark, it sits over a camera feed */
+/* Trends sheet */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.stat small{display:block;font-size:.68rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.stat b{font-weight:900;font-stretch:80%;font-size:1.45rem}
+.chart svg{display:block;width:100%;height:auto;touch-action:pan-y;cursor:crosshair}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .ax{fill:var(--muted);font-size:11px;font-weight:600;font-family:var(--f-body)}
+.chart .bar{fill:var(--accent)}
+.chart .bar.over{fill:var(--over)}
+.chart .hl{fill:var(--barbg)}
+.chart .goalline{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 3}
+.chart .avg{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.78rem;color:var(--muted);font-weight:600}
+.legend i{display:inline-block;width:11px;height:11px;margin-right:5px;border-radius:2px;background:var(--accent);vertical-align:-1px}
+.legend i.ov{background:var(--over)}
+.legend i.ln{height:2px;border-radius:1px;background:var(--ink);vertical-align:3px}
+.legend i.gl{height:0;border-top:1.5px dashed var(--muted);background:none;border-radius:0;vertical-align:3px}
+.readout{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:58px;border-top:1px solid var(--line);padding-top:10px}
+.readout small{display:block;color:var(--muted);font-size:.82rem}
+.readout .btn{padding:9px 12px;font-size:.9rem;flex:none}
+
 .scanner{position:fixed;inset:0;z-index:30;background:#000;color:#fff;display:flex;flex-direction:column}
 .scanner video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .scanner .shade{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
@@ -186,6 +213,7 @@ textarea.in{min-height:96px;resize:vertical}
     <button class="iconbtn" id="prevDay" aria-label="Previous day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="daylabel" id="dayLabel">Today</div>
     <button class="iconbtn" id="nextDay" aria-label="Next day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+    <button class="iconbtn" id="trendsBtn" aria-label="Trends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M8 15l4-5 3 3 5-6"/></svg></button>
     <button class="iconbtn" id="settingsBtn" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </div>
 </header>
@@ -295,6 +323,17 @@ function removeItems(date, ids) {
   if (!day.items.length) delete state.days[date];
   Store.save(); render();
 }
+// Remove one entry, with an Undo that puts it back in the same spot.
+function deleteItem(date, id) {
+  const items = dayItems(date), at = items.findIndex(x => x.id === id); if (at < 0) return;
+  const copy = items[at];
+  removeItems(date, [id]);
+  toast(`Deleted ${copy.name || "entry"}`, () => {
+    const day = state.days[date] || (state.days[date] = { items: [] });
+    day.items.splice(Math.min(at, day.items.length), 0, copy);
+    Store.save(); render();
+  });
+}
 function updateItem(date, id, patch) {
   const day = state.days[date]; if (!day) return;
   day.items = day.items.map(it => it.id === id ? { ...it, ...patch } : it);
@@ -362,7 +401,7 @@ function render() {
       if (it.qty && it.qty !== 1) bits.push(`${qtyText(it.qty)} × ${fmt(it.kcal)}`);
       if (it.serving) bits.push(esc(it.serving));
       const src = it.source === "claude" ? `<span class="tag">Est.</span>` : it.source === "barcode" ? `<span class="tag">Scan</span>` : "";
-      return `<li><button class="item" data-item="${esc(it.id)}"><span class="nm"><div>${esc(it.name || "Food")}</div>${(src || bits.length) ? `<small>${src}${bits.join(" · ")}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></button></li>`;
+      return `<li><button class="item" data-item="${esc(it.id)}"><span class="nm"><div>${esc(it.name || "Food")}</div>${(src || bits.length) ? `<small>${src}${bits.join(" · ")}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></button><button class="iconbtn del" data-del="${esc(it.id)}" aria-label="Delete ${esc(it.name || "entry")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;
     }).join("")}</ul></div>`;
   }).join("");
 }
@@ -479,9 +518,7 @@ function openEdit(id) {
     const del = $("#edDel", sheet);
     del.onclick = () => {
       if (!armed) { armed = true; del.textContent = "Tap again to delete"; return; }
-      const copy = { ...it };
-      removeItems(date, [id]); closeSheet();
-      toast(`Deleted ${it.name}`, () => { const day = state.days[date] || (state.days[date] = { items: [] }); day.items = [...day.items, copy]; Store.save(); render(); });
+      closeSheet(); deleteItem(date, id);
     };
   });
 }
@@ -498,6 +535,120 @@ function openGoal() {
       if (!(v >= 500 && v <= 10000)) { toast("Enter a goal between 500 and 10,000."); return; }
       state.goal = v; Store.save(); render(); closeSheet(); toast(`Goal set to ${fmt(v)} kcal`);
     };
+  });
+}
+
+/* ---------------- Trends ---------------- */
+const RANGES = [["30", "30 days"], ["90", "90 days"], ["365", "1 year"], ["all", "All"]];
+const loggedTotal = d => dayItems(d).length ? dayTotal(d) : null;
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+// Daily totals for the range; long ranges are grouped into weeks so bars stay readable.
+function trendData(range) {
+  const logged = Object.keys(state.days).filter(d => d <= state.today && dayItems(d).length).sort();
+  if (!logged.length) return null;
+  const start = range === "all" ? logged[0] : addDays(state.today, 1 - Number(range));
+  const days = [];
+  for (let d = start; d <= state.today; d = addDays(d, 1)) days.push(d);
+  const totals = days.map(loggedTotal), vals = totals.filter(t => t !== null);
+  const weekly = days.length > 120;
+  let pts;
+  if (weekly) {
+    const weeks = new Map();
+    days.forEach((d, i) => {
+      const wk = addDays(d, -((parseYmd(d).getDay() + 6) % 7));
+      if (!weeks.has(wk)) weeks.set(wk, []);
+      if (totals[i] !== null) weeks.get(wk).push({ d, t: totals[i] });
+    });
+    pts = [...weeks].map(([wk, l]) => ({ day: wk, open: l.length ? l[l.length - 1].d : wk, kcal: l.length ? mean(l.map(x => x.t)) : null, n: l.length }));
+  } else {
+    pts = days.map((d, i) => {
+      const win = Array.from({ length: 7 }, (_, k) => loggedTotal(addDays(d, -k))).filter(t => t !== null);
+      return { day: d, open: d, kcal: totals[i], avg: win.length ? mean(win) : null };
+    });
+  }
+  return { pts, weekly, nDays: days.length, logged: vals.length, avg: vals.length ? mean(vals) : 0, over: vals.filter(t => t > state.goal).length };
+}
+function openTrends() {
+  let range = "30", data = null, sel = -1;
+  openSheet(`
+    <h3>Trends</h3>
+    <div class="seg" role="group" aria-label="Time range">${RANGES.map(([k, l]) => `<button type="button" data-range="${k}" aria-pressed="${k === range}">${l}</button>`).join("")}</div>
+    <div class="stats" id="trStats"></div>
+    <div class="legend" id="trLegend"></div>
+    <div class="chart" id="trChart"></div>
+    <div class="readout" id="trRead" aria-live="polite"></div>
+  `, sheet => {
+    const chart = $("#trChart", sheet), read = $("#trRead", sheet);
+    const shortDate = (d, opts = { month: "short", day: "numeric" }) => parseYmd(d).toLocaleDateString(undefined, opts);
+    let geo = null;
+    const drawChart = () => {
+      const W = Math.max(280, Math.round(chart.clientWidth)), H = 210, L = 38, R = 6, T = 12, B = 24;
+      const pw = W - L - R, ph = H - T - B, n = data.pts.length, goal = state.goal;
+      const top = Math.max(goal * 1.15, ...data.pts.map(p => Math.max(p.kcal || 0, p.avg || 0)));
+      const step = [100, 250, 500, 1000, 2000, 5000].find(s => top / s <= 4) || 10000;
+      const yMax = Math.ceil(top / step) * step;
+      const y = v => T + ph - v / yMax * ph, band = pw / n, x = i => L + i * band;
+      const gap = band >= 8 ? 2 : band >= 4 ? 1 : 0, bw = Math.max(1, band - gap);
+      geo = { W, L, band, n };
+      let s = "";
+      for (let v = 0; v <= yMax; v += step) s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 1000 ? v / 1000 + "k" : v}</text>`;
+      if (sel >= 0) s += `<rect class="hl" x="${x(sel)}" y="${T}" width="${band}" height="${ph}"/>`;
+      data.pts.forEach((p, i) => {
+        if (p.kcal === null) return;
+        s += `<rect class="bar${p.kcal > goal ? " over" : ""}" x="${x(i) + gap / 2}" y="${y(p.kcal)}" width="${bw}" height="${Math.max(1, y(0) - y(p.kcal))}" rx="${Math.min(2, bw / 2)}"/>`;
+      });
+      if (!data.weekly) {
+        const d = data.pts.map((p, i) => p.avg === null ? null : `${x(i) + band / 2},${y(p.avg)}`);
+        const path = d.map((c, i) => c === null ? "" : (i && d[i - 1] !== null ? "L" : "M") + c).join("");
+        if (path) s += `<path class="avg" d="${path}"/>`;
+      }
+      s += `<line class="goalline" x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}"/>`;
+      const ticks = [...new Set([0, 1, 2, 3].map(k => Math.round(k * (n - 1) / 3)))];
+      ticks.forEach((i, k) => {
+        const anchor = ticks.length === 1 ? "middle" : k === 0 ? "start" : k === ticks.length - 1 ? "end" : "middle";
+        const tx = anchor === "start" ? x(i) : anchor === "end" ? x(i) + band : x(i) + band / 2;
+        const label = data.weekly ? shortDate(data.pts[i].day, { month: "short", year: "numeric" }) : shortDate(data.pts[i].day);
+        s += `<text class="ax" x="${tx}" y="${H - 6}" text-anchor="${anchor}">${esc(label)}</text>`;
+      });
+      chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${data.weekly ? "Weekly average" : "Daily"} calories, ${esc(shortDate(data.pts[0].day))} to ${esc(shortDate(data.pts[n - 1].day))}. Average ${fmt(data.avg)} per logged day; goal ${fmt(goal)}.">${s}</svg>`;
+    };
+    const drawRead = () => {
+      const p = data.pts[sel]; if (!p) { read.innerHTML = ""; return; }
+      const when = data.weekly ? `Week of ${shortDate(p.day, { month: "short", day: "numeric", year: "numeric" })}` : shortDate(p.day, { weekday: "short", month: "short", day: "numeric" });
+      const main = p.kcal === null ? "Nothing logged" : data.weekly ? `${fmt(p.kcal)} kcal/day · ${p.n} day${p.n === 1 ? "" : "s"} logged` : `${fmt(p.kcal)} kcal`;
+      const sub = !data.weekly && p.avg !== null ? `7-day average ${fmt(p.avg)}` : "";
+      read.innerHTML = `<div><b>${esc(when)}</b><div class="num">${main}</div>${sub ? `<small class="num">${sub}</small>` : ""}</div><button class="btn ghost" id="trOpen">View day</button>`;
+      $("#trOpen", read).onclick = () => { state.date = p.open; render(); closeSheet(); };
+    };
+    const draw = () => {
+      data = trendData(range);
+      if (!data) {
+        $("#trStats", sheet).innerHTML = $("#trLegend", sheet).innerHTML = read.innerHTML = "";
+        chart.innerHTML = `<div class="empty"><strong>No history yet</strong>Log some food and your daily totals will chart here.</div>`;
+        return;
+      }
+      $("#trStats", sheet).innerHTML = `
+        <div class="stat"><small>Daily avg</small><b class="num">${fmt(data.avg)}</b></div>
+        <div class="stat"><small>Days logged</small><b class="num">${data.logged}<span class="muted" style="font-size:.9rem">/${data.nDays}</span></b></div>
+        <div class="stat"><small>Over goal</small><b class="num">${data.over}</b></div>`;
+      $("#trLegend", sheet).innerHTML = `<span><i></i>${data.weekly ? "Weekly avg per day" : "Daily total"}</span><span><i class="ov"></i>Over goal</span>${data.weekly ? "" : `<span><i class="ln"></i>7-day average</span>`}<span><i class="gl"></i>Goal</span>`;
+      sel = data.pts.map(p => p.kcal !== null).lastIndexOf(true);
+      drawChart(); drawRead();
+    };
+    const pick = e => {
+      const svg = $("svg", chart); if (!svg || !geo) return;
+      const r = svg.getBoundingClientRect();
+      const i = Math.max(0, Math.min(geo.n - 1, Math.floor(((e.clientX - r.left) * geo.W / r.width - geo.L) / geo.band)));
+      if (i !== sel) { sel = i; drawChart(); drawRead(); }
+    };
+    chart.addEventListener("pointerdown", pick);
+    chart.addEventListener("pointermove", e => { if (e.pointerType === "mouse" || e.buttons) pick(e); });
+    sheet.querySelectorAll("[data-range]").forEach(b => b.addEventListener("click", () => {
+      range = b.dataset.range;
+      sheet.querySelectorAll("[data-range]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      draw();
+    }));
+    draw();
   });
 }
 
@@ -986,11 +1137,15 @@ $("#nextDay").onclick = () => { if (state.date < state.today) { state.date = add
 $("#week").addEventListener("click", e => { const b = e.target.closest("[data-day]"); if (!b || b.dataset.day > state.today) return; state.date = b.dataset.day; render(); });
 $("#goalBtn").onclick = openGoal;
 $("#settingsBtn").onclick = openSettings;
+$("#trendsBtn").onclick = openTrends;
 $("#setupBtn").onclick = openSettings;
 $("#addBtn").onclick = openAdd;
 $("#askBtn").onclick = openAsk;
 $("#scanBtn").onclick = openScanner;
-$("#log").addEventListener("click", e => { const b = e.target.closest("[data-item]"); if (b) openEdit(b.dataset.item); });
+$("#log").addEventListener("click", e => {
+  const del = e.target.closest("[data-del]"); if (del) { deleteItem(state.date, del.dataset.del); return; }
+  const b = e.target.closest("[data-item]"); if (b) openEdit(b.dataset.item);
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { if (scanStream) closeScanner(); return; }
   const t = ymd(new Date());
