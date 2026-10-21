@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Calorie Log</title>
+<meta name="description" content="Track daily calories with barcode scanning and Claude estimates.">
+<meta name="theme-color" content="#F6F7F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121411" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@500&display=swap">
+<script defer src="zxing.min.js"></script>
+<style>
+/* Layout: one phone column. A Nutrition-Facts style panel summarizes the day, the meal log sits below, actions live in a fixed bottom bar. */
+:root{
+  --paper:#F6F7F3; --surface:#FFFFFF; --ink:#151714; --muted:#5D6459; --line:#D8DCD3; --barbg:#E4E8DF;
+  --accent:#2C7A4B; --accent-ink:#FFFFFF; --accent-soft:#E2F0E6; --over:#B9400E; --scrim:rgba(18,20,17,.42);
+  --f-body:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#121411; --surface:#1A1D18; --ink:#ECEFE7; --muted:#9BA396; --line:#2D3229; --barbg:#272B24;
+  --accent:#62C08A; --accent-ink:#0D1A12; --accent-soft:#1D3325; --over:#F0835A; --scrim:rgba(0,0,0,.6); color-scheme:dark}}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+html{padding-top:env(safe-area-inset-top,0px)}
+body{font-family:var(--f-body);font-size:16px;line-height:1.4;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent);font-weight:700}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:520px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.num{font-variant-numeric:tabular-nums}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper)}
+.top .wrap{display:flex;align-items:center;gap:4px;padding-block:8px}
+.iconbtn{width:42px;height:42px;border-radius:50%;border:0;background:transparent;display:grid;place-items:center;color:var(--ink);flex:none}
+.iconbtn:hover{background:var(--barbg)}
+.iconbtn:disabled{opacity:.3;cursor:default;background:transparent}
+.iconbtn svg{width:22px;height:22px}
+.daylabel{flex:1;text-align:center;font-weight:700;font-stretch:88%;font-size:1.05rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daylabel small{display:block;font-weight:500;font-size:.78rem;color:var(--muted);font-stretch:100%}
+
+main .wrap{display:flex;flex-direction:column;gap:22px;padding-block:4px calc(120px + env(safe-area-inset-bottom,0px))}
+
+.facts{border:2px solid var(--ink);padding:6px 10px 10px;background:var(--surface)}
+.facts h1{margin:0;font-weight:900;font-stretch:66%;font-size:2.7rem;line-height:1;letter-spacing:-.01em}
+.rule{border:0;border-top:1px solid var(--ink);margin:4px 0}
+.rule.thick{border-top-width:10px;margin:4px 0 2px}
+.rule.mid{border-top-width:5px}
+.frow{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.frow b{font-weight:900}
+.goalbtn{all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;gap:12px;width:100%;font-weight:800;font-size:1.1rem}
+.goalbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.goalbtn .edit{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-left:6px}
+.small{font-size:.8rem;font-weight:700}
+.cal{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.cal .lbl{font-weight:900;font-size:2rem;font-stretch:80%;line-height:1}
+.cal .val{font-weight:900;font-size:3.2rem;font-stretch:72%;line-height:.9}
+.meter{position:relative;height:12px;background:var(--barbg);margin:8px 0 6px;overflow:hidden}
+.meter i{position:absolute;inset:0 auto 0 0;background:var(--accent);transition:width .35s ease}
+.facts.over .meter i{background:var(--over)}
+.remain{font-size:1.05rem}
+.facts.over .remain b{color:var(--over)}
+.dvhead{display:flex;justify-content:flex-end;font-size:.78rem;font-weight:800}
+.mealrow{display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-bottom:1px solid var(--ink)}
+.mealrow:last-child{border-bottom:0}
+.mealrow b{font-weight:800}
+.mealrow .pct{font-weight:800;min-width:3.2em;text-align:right}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;margin-top:8px}
+.wk{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+.wk:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wk .col{position:relative;width:100%;height:54px;background:var(--barbg)}
+.wk .col i{position:absolute;left:0;right:0;bottom:0;background:var(--ink);opacity:.75}
+.wk.over .col i{background:var(--over);opacity:1}
+.wk .goal{position:absolute;left:-2px;right:-2px;border-top:1.5px dashed var(--muted)}
+.wk span{font-size:.7rem;font-weight:700;color:var(--muted);letter-spacing:.03em}
+.wk.sel span{color:var(--ink)}
+.wk.sel .col{outline:2px solid var(--ink);outline-offset:1px}
+.wk[aria-disabled="true"]{cursor:default;opacity:.35}
+.footnote{font-size:.74rem;color:var(--muted);margin-top:8px;line-height:1.35}
+
+.log{display:flex;flex-direction:column;gap:18px}
+.meal h2{margin:0 0 4px;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;display:flex;justify-content:space-between;color:var(--muted)}
+.items{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.item{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:11px 2px;border-bottom:1px solid var(--line)}
+.item:hover{background:var(--barbg)}
+.item:focus-visible{outline:2px solid var(--accent)}
+.item .nm{flex:1;min-width:0}
+.item .nm div{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .nm small{display:block;color:var(--muted);font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .kc{font-weight:800;font-stretch:85%;font-size:1.05rem}
+.tag{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border:1px solid var(--line);border-radius:3px;margin-right:4px;color:var(--muted);vertical-align:1px}
+.empty{border:1.5px dashed var(--line);padding:22px 18px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font-size:1.05rem;margin-bottom:4px}
+.setup{border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.setup strong{font-size:1.02rem}
+
+.actions{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--paper);border-top:1px solid var(--line);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));padding-top:10px}
+.actions .wrap{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px}
+.act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:58px;border-radius:12px;border:1.5px solid var(--ink);background:var(--surface);font-weight:700;font-size:.86rem;font-stretch:92%}
+.act svg{width:22px;height:22px}
+.act.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.scrim{position:fixed;inset:0;z-index:20;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;max-height:calc(100% - 40px - env(safe-area-inset-top,0px));overflow:auto;background:var(--surface);border-radius:18px 18px 0 0;padding-top:8px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px;animation:up .22s ease}
+@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion: reduce){.sheet{animation:none}.meter i{transition:none}}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);align-self:center}
+.sheet h3{margin:0;font-weight:900;font-stretch:72%;font-size:1.9rem;line-height:1.05}
+.sheet h4{margin:4px 0 0;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--muted)}
+.sheet p{margin:0}
+.muted{color:var(--muted)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:.8rem;font-weight:700;color:var(--muted)}
+.in{width:100%;min-width:0;border:1.5px solid var(--line);background:var(--paper);border-radius:10px;padding:11px 12px;font-size:1rem;color:var(--ink)}
+.in:focus{border-color:var(--ink);outline:none}
+textarea.in{min-height:96px;resize:vertical}
+.row2{display:grid;grid-template-columns:1fr 110px;gap:10px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--ink);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:9px 2px;font-weight:700;font-size:.82rem;font-stretch:90%}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.btn{border:1.5px solid var(--ink);background:var(--surface);border-radius:12px;padding:13px 16px;font-weight:800;font-size:1rem;text-align:center;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-color:var(--line)}
+.btn.danger{border-color:var(--over);color:var(--over)}
+.btn:disabled{opacity:.45;cursor:default}
+.btns{display:flex;gap:10px}
+.btns .btn{flex:1}
+.stepper{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.stepper button{border:0;background:transparent;width:40px;height:42px;font-size:1.2rem;font-weight:800}
+.stepper span{min-width:44px;text-align:center;font-weight:800}
+.foodlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:42vh;overflow:auto;border-top:1px solid var(--line)}
+.foodlist li{display:flex}
+.foodlist .item{padding:10px 4px}
+.add-dot{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);display:grid;place-items:center;font-weight:900;flex:none}
+.ritem{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.ritem .line{display:flex;gap:8px;align-items:center}
+.ritem .line .in{flex:1}
+.ritem .kin{width:96px;flex:none;text-align:right}
+.meta{font-size:.8rem;color:var(--muted)}
+.code{font-family:var(--f-mono);font-size:.82rem;letter-spacing:.04em}
+.callout{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:.88rem}
+.callout.warn{background:var(--barbg)}
+.thinking{display:flex;align-items:center;gap:12px;padding:18px 0}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.thumb{display:flex;align-items:center;gap:10px}
+.thumb img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.check{display:flex;gap:10px;align-items:center;font-size:.92rem}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.keyrow{display:flex;gap:8px}
+.keyrow .in{flex:1;font-family:var(--f-mono);font-size:.9rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:14px;font-weight:600;font-size:.92rem;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.toast button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;font-weight:800;padding:6px 10px}
+
+/* Live scanner: always dark, it sits over a camera feed */
+.scanner{position:fixed;inset:0;z-index:30;background:#000;color:#fff;display:flex;flex-direction:column}
+.scanner video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scanner .shade{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.scanner .reticle{width:min(80vw,360px);height:min(46vw,200px);border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.5);border:2.5px solid #fff;position:relative}
+.scanner .reticle::after{content:"";position:absolute;left:8%;right:8%;top:50%;height:2px;background:#62C08A;box-shadow:0 0 8px #62C08A;animation:scanline 1.6s ease-in-out infinite alternate}
+@keyframes scanline{from{transform:translateY(-70px)}to{transform:translateY(70px)}}
+@media (prefers-reduced-motion: reduce){.scanner .reticle::after{animation:none}}
+.scanner .bar{position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;padding-top:calc(10px + env(safe-area-inset-top,0px));padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+.scanner .bar .iconbtn{color:#fff;background:rgba(0,0,0,.35)}
+.scanner .bar .iconbtn[aria-pressed="true"]{background:#fff;color:#000}
+.scanner .hint{position:relative;z-index:2;margin-top:auto;text-align:center;font-weight:600;padding:0 24px 14px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.scanner .scanbtns{position:relative;z-index:2;display:flex;gap:10px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.scanner .scanbtns button{flex:1;border:1.5px solid rgba(255,255,255,.8);background:rgba(0,0,0,.45);color:#fff;border-radius:12px;padding:12px 8px;font-weight:700}
+.scanner .err{position:relative;z-index:2;margin:auto 24px;background:#1A1D18;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;color:#ECEFE7}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <button class="iconbtn" id="prevDay" aria-label="Previous day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="daylabel" id="dayLabel">Today</div>
+    <button class="iconbtn" id="nextDay" aria-label="Next day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+    <button class="iconbtn" id="settingsBtn" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="facts" id="facts" aria-label="Calories for the day">
+      <h1>Calorie Facts</h1>
+      <hr class="rule">
+      <button class="goalbtn" id="goalBtn"><span>Daily goal<span class="edit">Edit</span></span><span class="num" id="goalVal">2,000 kcal</span></button>
+      <hr class="rule thick">
+      <div class="small">Amount eaten</div>
+      <div class="cal"><span class="lbl">Calories</span><span class="val num" id="totalVal">0</span></div>
+      <hr class="rule mid">
+      <div class="meter" role="progressbar" aria-label="Share of daily goal" aria-valuemin="0" aria-valuemax="100" id="meter"><i id="meterFill" style="width:0%"></i></div>
+      <div class="frow remain"><span id="remainK">Remaining</span><b class="num" id="remainVal">2,000</b></div>
+      <hr class="rule">
+      <div class="dvhead">% Goal*</div>
+      <div id="mealRows"></div>
+      <hr class="rule thick">
+      <div class="week" id="week"></div>
+      <div class="footnote">* Percent of your daily calorie goal. Dashed line on the week chart marks the goal.</div>
+    </section>
+
+    <div class="setup" id="setupCard" hidden>
+      <strong>Turn on Claude estimates</strong>
+      <span>Add your Anthropic API key so Claude can estimate meals and read nutrition labels. Barcode lookup and manual entry work without it.</span>
+      <button class="btn primary" id="setupBtn">Add API key</button>
+    </div>
+
+    <section class="log" id="log" aria-label="Food log"></section>
+  </div>
+</main>
+
+<nav class="actions" aria-label="Add food">
+  <div class="wrap">
+    <button class="act primary" id="scanBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><path d="M7 8v8M10 8v8M13 8v8M15.5 8v8M17.5 8v8"/></svg>Scan barcode</button>
+    <button class="act" id="askBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Ask Claude</button>
+    <button class="act" id="addBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add food</button>
+  </div>
+</nav>
+
+<input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="photoInput" accept="image/*" hidden>
+<input type="file" id="importInput" accept="application/json,.json" hidden>
+<div id="scanRoot"></div>
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+const MODEL_TEXT = "claude-haiku-5-5";
+const MODEL_VISION = "claude-sonnet-5-5";
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseYmd = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const fmt = n => Math.round(Number(n) || 0).toLocaleString();
+const newId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const qtyText = q => (Math.round(q * 100) / 100).toString();
+function mealForNow() {
+  const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
+  if (h >= 4 && h < 10.5) return "Breakfast";
+  if (h >= 10.5 && h < 15.5) return "Lunch";
+  if (h >= 17 && h < 22) return "Dinner";
+  return "Snacks";
+}
+
+const state = { today: ymd(new Date()), date: ymd(new Date()), days: {}, foods: [], goal: 2000, apiKey: "" };
+const dayItems = d => (state.days[d]?.items) || [];
+const itemTotal = it => (Number(it.kcal) || 0) * (Number(it.qty) || 1);
+const dayTotal = d => dayItems(d).reduce((s, it) => s + itemTotal(it), 0);
+const hasKey = () => !!state.apiKey;
+
+/* ---------------- Storage (on this phone) ---------------- */
+const LS_KEY = "calorie-log-v1", KEY_KEY = "calorie-log-apikey";
+const Store = {
+  load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+      if (d) { state.goal = Number(d.goal) || 2000; state.days = d.days || {}; state.foods = d.foods || []; }
+    } catch (e) {}
+    try { state.apiKey = localStorage.getItem(KEY_KEY) || ""; } catch (e) {}
+  },
+  save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ goal: state.goal, days: state.days, foods: state.foods })); }
+    catch (e) { toast("Couldn't save. Your phone may be low on storage."); }
+  },
+  saveKey() { try { state.apiKey ? localStorage.setItem(KEY_KEY, state.apiKey) : localStorage.removeItem(KEY_KEY); } catch (e) {} },
+};
+
+/* ---------------- Mutations ---------------- */
+function addItems(date, items) {
+  const day = state.days[date] || (state.days[date] = { items: [] });
+  const added = items.map(it => ({ id: newId(), ts: Date.now(), qty: 1, ...it, kcal: Math.max(0, Math.round(Number(it.kcal) || 0)) }));
+  day.items = [...day.items, ...added];
+  Store.save(); render();
+  return added.map(a => a.id);
+}
+function removeItems(date, ids) {
+  const day = state.days[date]; if (!day) return;
+  day.items = day.items.filter(it => !ids.includes(it.id));
+  if (!day.items.length) delete state.days[date];
+  Store.save(); render();
+}
+function updateItem(date, id, patch) {
+  const day = state.days[date]; if (!day) return;
+  day.items = day.items.map(it => it.id === id ? { ...it, ...patch } : it);
+  Store.save(); render();
+}
+function rememberFood(f) {
+  const id = f.id || (f.barcode ? f.barcode : "f" + newId());
+  const prev = state.foods.find(x => x.id === id);
+  const food = { id, name: f.name, kcal: Math.round(Number(f.kcal) || 0), serving: f.serving || "", barcode: f.barcode || "", uses: (prev?.uses || 0) + 1, lastUsed: Date.now() };
+  state.foods = [food, ...state.foods.filter(x => x.id !== id)].slice(0, 500);
+  Store.save();
+  return id;
+}
+const findFoodByName = name => { const n = name.trim().toLowerCase(); return state.foods.find(f => !f.barcode && f.name.trim().toLowerCase() === n); };
+const findFoodByCode = code => state.foods.find(f => f.barcode && (f.barcode === code || f.barcode.replace(/^0+/, "") === code.replace(/^0+/, "")));
+
+/* ---------------- Rendering ---------------- */
+function dayTitle(d) {
+  if (d === state.today) return "Today";
+  if (d === addDays(state.today, -1)) return "Yesterday";
+  return parseYmd(d).toLocaleDateString(undefined, { weekday: "long" });
+}
+function render() {
+  const d = state.date, total = dayTotal(d), goal = state.goal;
+  $("#dayLabel").innerHTML = `${esc(dayTitle(d))}<small>${esc(parseYmd(d).toLocaleDateString(undefined, { month: "long", day: "numeric", year: d.slice(0, 4) === state.today.slice(0, 4) ? undefined : "numeric" }))}</small>`;
+  $("#nextDay").disabled = d >= state.today;
+  $("#goalVal").textContent = `${fmt(goal)} kcal`;
+  $("#totalVal").textContent = fmt(total);
+  const pct = goal ? total / goal * 100 : 0;
+  $("#meterFill").style.width = Math.min(100, pct) + "%";
+  $("#meter").setAttribute("aria-valuenow", String(Math.round(pct)));
+  const over = total > goal;
+  $("#facts").classList.toggle("over", over);
+  $("#remainK").textContent = over ? "Over goal by" : "Remaining";
+  $("#remainVal").textContent = fmt(Math.abs(goal - total));
+  $("#setupCard").hidden = hasKey();
+
+  const items = dayItems(d);
+  $("#mealRows").innerHTML = MEALS.map(m => {
+    const t = items.filter(i => i.meal === m).reduce((s, i) => s + itemTotal(i), 0);
+    return `<div class="mealrow"><span><b>${m}</b> <span class="num">${fmt(t)} kcal</span></span><span class="pct num">${goal ? Math.round(t / goal * 100) : 0}%</span></div>`;
+  }).join("");
+
+  const sel = parseYmd(d), dow = (sel.getDay() + 6) % 7, monday = addDays(d, -dow);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const totals = days.map(dayTotal);
+  const max = Math.max(goal * 1.25, ...totals, 1);
+  $("#week").innerHTML = days.map((wd, i) => {
+    const t = totals[i], future = wd > state.today;
+    const h = Math.round(t / max * 100), g = Math.round(goal / max * 100);
+    return `<button class="wk${wd === d ? " sel" : ""}${t > goal ? " over" : ""}" data-day="${wd}" aria-disabled="${future}" aria-label="${esc(parseYmd(wd).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }))}: ${fmt(t)} calories"><div class="col"><i style="height:${h}%"></i><div class="goal" style="bottom:${g}%"></div></div><span>${parseYmd(wd).toLocaleDateString(undefined, { weekday: "narrow" })}</span></button>`;
+  }).join("");
+
+  const log = $("#log");
+  if (!items.length) {
+    log.innerHTML = `<div class="empty"><strong>Nothing logged ${d === state.today ? "yet today" : "for this day"}</strong>Scan a barcode, describe a meal for Claude to estimate, or add a food you've saved.</div>`;
+    return;
+  }
+  log.innerHTML = MEALS.map(m => {
+    const list = items.filter(i => i.meal === m);
+    if (!list.length) return "";
+    const t = list.reduce((s, i) => s + itemTotal(i), 0);
+    return `<div class="meal"><h2><span>${m}</span><span class="num">${fmt(t)}</span></h2><ul class="items">${list.map(it => {
+      const bits = [];
+      if (it.qty && it.qty !== 1) bits.push(`${qtyText(it.qty)} × ${fmt(it.kcal)}`);
+      if (it.serving) bits.push(esc(it.serving));
+      const src = it.source === "claude" ? `<span class="tag">Est.</span>` : it.source === "barcode" ? `<span class="tag">Scan</span>` : "";
+      return `<li><button class="item" data-item="${esc(it.id)}"><span class="nm"><div>${esc(it.name || "Food")}</div>${(src || bits.length) ? `<small>${src}${bits.join(" · ")}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></button></li>`;
+    }).join("")}</ul></div>`;
+  }).join("");
+}
+
+/* ---------------- Sheets & toast ---------------- */
+let sheetCleanup = null;
+function openSheet(html, onMount) {
+  closeSheet();
+  const root = $("#sheetRoot");
+  root.innerHTML = `<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+  const scrim = $("#scrim");
+  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  sheetCleanup = onMount ? onMount($(".sheet", root)) : null;
+}
+function closeSheet() {
+  if (typeof sheetCleanup === "function") { try { sheetCleanup(); } catch (e) {} }
+  sheetCleanup = null;
+  $("#sheetRoot").innerHTML = "";
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($("#scanRoot").firstChild) closeScanner(); else closeSheet(); } });
+
+let toastTimer;
+function toast(msg, undo) {
+  clearTimeout(toastTimer);
+  const r = $("#toastRoot");
+  r.innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span>${undo ? `<button id="undoBtn">Undo</button>` : ""}</div>`;
+  if (undo) $("#undoBtn").onclick = () => { undo(); r.innerHTML = ""; };
+  toastTimer = setTimeout(() => { r.innerHTML = ""; }, 4500);
+}
+const mealSeg = current => `<div class="seg" role="group" aria-label="Meal">${MEALS.map(m => `<button type="button" data-meal="${m}" aria-pressed="${m === current}">${m}</button>`).join("")}</div>`;
+function wireSeg(sheet, onPick) {
+  sheet.querySelectorAll(".seg [data-meal]").forEach(b => b.addEventListener("click", () => {
+    sheet.querySelectorAll(".seg [data-meal]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    onPick(b.dataset.meal);
+  }));
+}
+const defaultMeal = () => state.date === state.today ? mealForNow() : "Snacks";
+
+/* ---------------- Add food ---------------- */
+function openAdd() {
+  let meal = defaultMeal(), q = "";
+  openSheet(`
+    <h3>Add food</h3>
+    ${mealSeg(meal)}
+    <label class="f">My foods<input class="in" id="foodSearch" type="search" placeholder="Search saved foods" autocomplete="off"></label>
+    <ul class="foodlist" id="foodList"></ul>
+    <h4>Enter manually</h4>
+    <div class="row2">
+      <input class="in" id="manName" placeholder="Food name" autocomplete="off">
+      <input class="in num" id="manKcal" type="number" inputmode="numeric" min="0" placeholder="kcal">
+    </div>
+    <label class="check"><input type="checkbox" id="manSave" checked> Save to my foods</label>
+    <button class="btn primary" id="manAdd" disabled>Add</button>
+  `, sheet => {
+    wireSeg(sheet, m => meal = m);
+    const list = $("#foodList", sheet);
+    const draw = () => {
+      const f = state.foods.filter(x => !q || x.name.toLowerCase().includes(q));
+      list.innerHTML = f.length ? f.slice(0, 80).map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${x.barcode ? `<span class="tag">Scan</span>` : ""}${esc(x.serving || "1 serving")}</small></span><span class="kc num">${fmt(x.kcal)}</span><span class="add-dot" aria-hidden="true">+</span></button></li>`).join("")
+        : `<li class="muted" style="padding:12px 2px;font-size:.9rem">${state.foods.length ? "No saved food matches." : "Foods you scan or add show up here for one-tap logging."}</li>`;
+    };
+    draw();
+    $("#foodSearch", sheet).addEventListener("input", e => { q = e.target.value.trim().toLowerCase(); draw(); });
+    list.addEventListener("click", e => {
+      const b = e.target.closest("[data-food]"); if (!b) return;
+      const f = state.foods.find(x => x.id === b.dataset.food); if (!f) return;
+      const date = state.date;
+      rememberFood(f);
+      const ids = addItems(date, [{ name: f.name, kcal: f.kcal, serving: f.serving, meal, source: f.barcode ? "barcode" : "food", foodId: f.id, barcode: f.barcode || "" }]);
+      closeSheet();
+      toast(`Added ${f.name} · ${fmt(f.kcal)} kcal`, () => removeItems(date, ids));
+    });
+    const nm = $("#manName", sheet), kc = $("#manKcal", sheet), btn = $("#manAdd", sheet);
+    const valid = () => { btn.disabled = !(nm.value.trim() && kc.value !== "" && Number(kc.value) >= 0); };
+    nm.addEventListener("input", valid); kc.addEventListener("input", valid);
+    btn.addEventListener("click", () => {
+      const name = nm.value.trim(), kcal = Math.round(Number(kc.value)), date = state.date;
+      const foodId = $("#manSave", sheet).checked ? rememberFood({ id: findFoodByName(name)?.id, name, kcal }) : "";
+      const ids = addItems(date, [{ name, kcal, meal, source: "manual", foodId }]);
+      closeSheet();
+      toast(`Added ${name} · ${fmt(kcal)} kcal`, () => removeItems(date, ids));
+    });
+  });
+}
+
+/* ---------------- Edit entry ---------------- */
+function openEdit(id) {
+  const date = state.date;
+  const it = dayItems(date).find(x => x.id === id); if (!it) return;
+  let meal = it.meal, qty = Number(it.qty) || 1, armed = false;
+  openSheet(`
+    <h3>Edit entry</h3>
+    <label class="f">Name<input class="in" id="edName" value="${esc(it.name)}"></label>
+    <div class="row2" style="align-items:end">
+      <label class="f">kcal per serving<input class="in num" id="edKcal" type="number" inputmode="numeric" min="0" value="${esc(it.kcal)}"></label>
+      <div class="f" style="display:flex;flex-direction:column;gap:4px;font-size:.8rem;font-weight:700;color:var(--muted)">Servings<div class="stepper"><button type="button" id="qMinus" aria-label="Fewer servings">−</button><span class="num" id="qVal">${qtyText(qty)}</span><button type="button" id="qPlus" aria-label="More servings">+</button></div></div>
+    </div>
+    ${it.serving ? `<p class="meta">Serving: ${esc(it.serving)}</p>` : ""}
+    ${it.barcode ? `<p class="meta">Barcode <span class="code">${esc(it.barcode)}</span></p>` : ""}
+    ${mealSeg(meal)}
+    <div class="btns"><button class="btn danger" id="edDel">Delete</button><button class="btn primary" id="edSave">Save</button></div>
+  `, sheet => {
+    wireSeg(sheet, m => meal = m);
+    const qv = $("#qVal", sheet);
+    $("#qMinus", sheet).onclick = () => { qty = Math.max(0.25, qty - (qty <= 1 ? 0.25 : 0.5)); qv.textContent = qtyText(qty); };
+    $("#qPlus", sheet).onclick = () => { qty = qty < 1 ? qty + 0.25 : qty + 0.5; qv.textContent = qtyText(qty); };
+    $("#edSave", sheet).onclick = () => {
+      const kcal = Math.max(0, Math.round(Number($("#edKcal", sheet).value) || 0));
+      const name = $("#edName", sheet).value.trim() || it.name;
+      if (it.foodId) { const f = state.foods.find(x => x.id === it.foodId); if (f && (f.kcal !== kcal || f.name !== name)) state.foods = state.foods.map(x => x.id === f.id ? { ...f, kcal, name } : x); }
+      updateItem(date, id, { name, kcal, qty, meal });
+      closeSheet(); toast("Saved");
+    };
+    const del = $("#edDel", sheet);
+    del.onclick = () => {
+      if (!armed) { armed = true; del.textContent = "Tap again to delete"; return; }
+      const copy = { ...it };
+      removeItems(date, [id]); closeSheet();
+      toast(`Deleted ${it.name}`, () => { const day = state.days[date] || (state.days[date] = { items: [] }); day.items = [...day.items, copy]; Store.save(); render(); });
+    };
+  });
+}
+
+/* ---------------- Goal ---------------- */
+function openGoal() {
+  openSheet(`
+    <h3>Daily goal</h3>
+    <label class="f">Calories per day<input class="in num" id="goalIn" type="number" inputmode="numeric" min="500" max="10000" step="50" value="${state.goal}"></label>
+    <button class="btn primary" id="goalSave">Save goal</button>
+  `, sheet => {
+    $("#goalSave", sheet).onclick = () => {
+      const v = Math.round(Number($("#goalIn", sheet).value));
+      if (!(v >= 500 && v <= 10000)) { toast("Enter a goal between 500 and 10,000."); return; }
+      state.goal = v; Store.save(); render(); closeSheet(); toast(`Goal set to ${fmt(v)} kcal`);
+    };
+  });
+}
+
+/* ---------------- Settings ---------------- */
+function openSettings() {
+  openSheet(`
+    <h3>Settings</h3>
+    <h4>Claude</h4>
+    <p class="meta">Claude estimates meals and reads nutrition labels using your own Anthropic API key. It's billed to your Anthropic account, usually well under a cent per estimate. The key is kept only on this phone.</p>
+    <div class="keyrow"><input class="in" id="keyIn" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(state.apiKey)}"><button class="btn ghost" id="keyShow" type="button">Show</button></div>
+    <div class="btns"><button class="btn primary" id="keySave">Save and test key</button>${state.apiKey ? `<button class="btn ghost" id="keyRemove">Remove</button>` : ""}</div>
+    <p class="meta" id="keyMsg">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> under API keys. You'll need to add a little credit under Billing first.</p>
+    <h4>Your data</h4>
+    <p class="meta">Your log is stored on this phone. Save a backup now and then, or before switching phones.</p>
+    <div class="btns"><button class="btn ghost" id="exportBtn">Save backup</button><button class="btn ghost" id="importBtn">Restore backup</button></div>
+  `, sheet => {
+    const ki = $("#keyIn", sheet), msg = $("#keyMsg", sheet);
+    $("#keyShow", sheet).onclick = e => { const show = ki.type === "password"; ki.type = show ? "text" : "password"; e.target.textContent = show ? "Hide" : "Show"; };
+    $("#keySave", sheet).onclick = async e => {
+      const k = ki.value.trim();
+      if (!k) { msg.textContent = "Paste your key first."; return; }
+      e.target.disabled = true; msg.textContent = "Testing the key…";
+      try {
+        await callClaude("Reply with only the JSON {\"ok\":true}", { key: k, maxTokens: 20 });
+        state.apiKey = k; Store.saveKey(); render(); closeSheet(); toast("Claude is ready");
+      } catch (err) {
+        msg.textContent = err.message; e.target.disabled = false;
+      }
+    };
+    $("#keyRemove", sheet)?.addEventListener("click", () => { state.apiKey = ""; Store.saveKey(); render(); closeSheet(); toast("API key removed"); });
+    $("#exportBtn", sheet).onclick = exportBackup;
+    $("#importBtn", sheet).onclick = () => $("#importInput").click();
+  });
+}
+function exportBackup() {
+  const data = JSON.stringify({ app: "calorie-log", version: 1, exported: new Date().toISOString(), goal: state.goal, days: state.days, foods: state.foods });
+  const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+  const a = document.createElement("a"); a.href = url; a.download = `calorie-log-${state.today}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("Backup saved to Downloads");
+}
+$("#importInput").addEventListener("change", async e => {
+  const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (d?.app !== "calorie-log" || typeof d.days !== "object") throw new Error();
+    for (const [date, day] of Object.entries(d.days)) {
+      const have = new Set(dayItems(date).map(i => i.id));
+      const extra = (day.items || []).filter(i => !have.has(i.id));
+      if (extra.length) (state.days[date] || (state.days[date] = { items: [] })).items.push(...extra);
+    }
+    const known = new Set(state.foods.map(f => f.id));
+    state.foods = [...state.foods, ...(d.foods || []).filter(f => !known.has(f.id))];
+    if (Number(d.goal) > 0) state.goal = Number(d.goal);
+    Store.save(); render(); closeSheet(); toast("Backup restored");
+  } catch (err) { toast("That file isn't a Calorie Log backup."); }
+});
+
+/* ---------------- Claude API ---------------- */
+async function blobToB64(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let s = ""; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function parseJson(text) {
+  const t = String(text || "").trim();
+  try { return JSON.parse(t); } catch (e) {}
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (fence) { try { return JSON.parse(fence[1]); } catch (e) {} }
+  const a = t.search(/[[{]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+  throw new Error("Claude's answer couldn't be read. Try again.");
+}
+async function callClaude(prompt, { image = null, signal, key = state.apiKey, maxTokens = 1024 } = {}) {
+  const content = [];
+  if (image) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: await blobToB64(image) } });
+  content.push({ type: "text", text: prompt });
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal,
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: image ? MODEL_VISION : MODEL_TEXT, max_tokens: maxTokens, messages: [{ role: "user", content }] }),
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw new Error("Couldn't reach Claude. Check your connection.");
+  }
+  let body = null; try { body = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const m = body?.error?.message || "";
+    if (res.status === 401) throw new Error("That API key wasn't accepted. Check it was copied in full.");
+    if (res.status === 403) throw new Error("This API key doesn't have permission to use Claude.");
+    if (/credit balance/i.test(m)) throw new Error("Your Anthropic account is out of credit. Add some under Billing at console.anthropic.com.");
+    if (res.status === 429) throw new Error("Too many requests right now. Wait a minute and try again.");
+    if (res.status === 529 || res.status >= 500) throw new Error("Claude is busy. Try again in a moment.");
+    throw new Error(m || `Claude returned an error (${res.status}).`);
+  }
+  const text = (body?.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+  return parseJson(text);
+}
+
+/* ---------------- Images ---------------- */
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => res({ img, url });
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("decode")); };
+    img.src = url;
+  });
+}
+function toCanvas(src, maxSide) {
+  const w = src.videoWidth || src.naturalWidth || src.width, h = src.videoHeight || src.naturalHeight || src.height;
+  const s = Math.min(1, maxSide / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+const canvasBlob = c => new Promise(r => c.toBlob(b => r(b), "image/jpeg", 0.85));
+async function fileToJpeg(file, max = 1568) { const { img, url } = await loadImage(file); const c = toCanvas(img, max); URL.revokeObjectURL(url); return canvasBlob(c); }
+
+/* ---------------- Barcode decoding ---------------- */
+const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e"];
+let detector = null;
+async function getDetector() {
+  if (detector !== null) return detector;
+  detector = false;
+  if ("BarcodeDetector" in window) {
+    try {
+      const sup = await window.BarcodeDetector.getSupportedFormats();
+      const f = FORMATS.filter(x => sup.includes(x));
+      if (f.length) detector = new window.BarcodeDetector({ formats: f });
+    } catch (e) {}
+  }
+  return detector;
+}
+let zreader = null;
+function zxingDecode(canvas) {
+  const Z = window.ZXing; if (!Z) return "";
+  if (!zreader) {
+    const hints = new Map();
+    hints.set(Z.DecodeHintType.TRY_HARDER, true);
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]);
+    zreader = new Z.MultiFormatReader(); zreader.setHints(hints);
+  }
+  try { return zreader.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)))).getText(); }
+  catch (e) { return ""; }
+}
+const cleanCode = t => { t = String(t || "").replace(/\D/g, ""); return t.length >= 8 ? t : ""; };
+async function decodeFrame(source) {
+  const det = await getDetector();
+  if (det) { try { const r = await det.detect(source); if (r?.length) return cleanCode(r[0].rawValue); } catch (e) {} }
+  if (!det || source instanceof HTMLImageElement) {
+    const c = toCanvas(source, 1000);
+    return cleanCode(zxingDecode(c));
+  }
+  return "";
+}
+
+/* ---------------- Live scanner ---------------- */
+let scanStream = null, scanTimer = null;
+function closeScanner() {
+  clearTimeout(scanTimer); scanTimer = null;
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  $("#scanRoot").innerHTML = "";
+}
+async function openScanner() {
+  closeSheet();
+  const root = $("#scanRoot");
+  root.innerHTML = `
+    <div class="scanner" role="dialog" aria-label="Scan a barcode">
+      <video id="scanVideo" playsinline muted autoplay></video>
+      <div class="shade"><div class="reticle"></div></div>
+      <div class="bar">
+        <button class="iconbtn" id="scanClose" aria-label="Close scanner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <button class="iconbtn" id="torchBtn" aria-label="Flashlight" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v5l-3 4v11H9V11L6 7z"/><path d="M12 14v2"/></svg></button>
+      </div>
+      <div class="hint" id="scanHint">Line up the barcode in the box</div>
+      <div class="scanbtns">
+        <button id="typeCode">Type the number</button>
+        <button id="labelPhoto">${hasKey() ? "Photo of label" : "Take a photo"}</button>
+      </div>
+    </div>`;
+  $("#scanClose").onclick = closeScanner;
+  $("#typeCode").onclick = () => { closeScanner(); openTypeCode(); };
+  $("#labelPhoto").onclick = () => { closeScanner(); pickPhoto($("#camInput"), f => handlePhoto(f)); };
+
+  if (!navigator.mediaDevices?.getUserMedia) { scannerError("This browser can't open the camera here. Use a photo instead."); return; }
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, focusMode: "continuous" }, audio: false });
+  } catch (e) {
+    scannerError(e?.name === "NotAllowedError" ? "Camera access is off for this app. Turn it on in Chrome: tap the lock or ⋮ › Site settings › Camera › Allow. Or use a photo." : "The camera couldn't start. Close other apps using it, or use a photo.");
+    return;
+  }
+  if (!$("#scanVideo")) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; return; }
+  const video = $("#scanVideo");
+  video.srcObject = scanStream;
+  try { await video.play(); } catch (e) {}
+  const track = scanStream.getVideoTracks()[0];
+  try {
+    const caps = track.getCapabilities?.() || {};
+    if (caps.torch) {
+      const tb = $("#torchBtn"); tb.hidden = false;
+      tb.onclick = async () => { const on = tb.getAttribute("aria-pressed") !== "true"; try { await track.applyConstraints({ advanced: [{ torch: on }] }); tb.setAttribute("aria-pressed", String(on)); } catch (e) {} };
+    }
+  } catch (e) {}
+  let last = "", hits = 0;
+  const tick = async () => {
+    if (!scanStream) return;
+    if (video.readyState >= 2) {
+      const code = await decodeFrame(video.readyState >= 2 && !(await getDetector()) ? cropCenter(video) : video);
+      if (!scanStream) return;
+      if (code) {
+        hits = code === last ? hits + 1 : 1; last = code;
+        if (hits >= 2) { navigator.vibrate?.(60); closeScanner(); handleCode(code); return; }
+      }
+    }
+    scanTimer = setTimeout(tick, 120);
+  };
+  tick();
+}
+function cropCenter(video) {
+  const w = video.videoWidth, h = video.videoHeight;
+  const cw = Math.round(w * 0.8), ch = Math.round(h * 0.5);
+  const c = document.createElement("canvas"); const scale = Math.min(1, 1000 / cw);
+  c.width = Math.round(cw * scale); c.height = Math.round(ch * scale);
+  c.getContext("2d").drawImage(video, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, c.width, c.height);
+  return c;
+}
+function scannerError(msg) {
+  const s = $(".scanner"); if (!s) return;
+  $(".shade", s)?.remove(); $("#scanHint")?.remove();
+  const box = document.createElement("div"); box.className = "err";
+  box.innerHTML = `<strong>Camera unavailable</strong><span>${esc(msg)}</span>`;
+  s.insertBefore(box, $(".scanbtns", s));
+}
+function pickPhoto(input, cb) {
+  input.onchange = () => { const f = input.files?.[0]; input.value = ""; if (f) cb(f); };
+  input.click();
+}
+function openTypeCode() {
+  openSheet(`
+    <h3>Enter barcode</h3>
+    <label class="f">Number under the barcode<input class="in num code" id="codeIn" inputmode="numeric" autocomplete="off" placeholder="e.g. 038000138416"></label>
+    <button class="btn primary" id="codeGo">Look up</button>
+  `, sheet => {
+    const ci = $("#codeIn", sheet); setTimeout(() => ci.focus(), 50);
+    const go = () => { const c = cleanCode(ci.value); if (!c) { toast("Enter the 8 to 13 digit number."); return; } handleCode(c); };
+    $("#codeGo", sheet).onclick = go;
+    ci.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  });
+}
+
+/* ---------------- Lookups ---------------- */
+function thinkingSheet(title, msg, ctl) {
+  openSheet(`<h3>${esc(title)}</h3><div class="thinking"><div class="spin" aria-hidden="true"></div><div id="thinkMsg">${esc(msg)}</div></div><button class="btn ghost" id="stopBtn">Cancel</button>`, sheet => {
+    $("#stopBtn", sheet).onclick = () => { ctl?.abort(); closeSheet(); };
+    return () => ctl?.abort();
+  });
+}
+async function lookupOFF(code, signal) {
+  const fields = "product_name,product_name_en,brands,serving_size,serving_quantity,quantity,nutriments";
+  for (const c of [...new Set([code, code.length === 12 ? "0" + code : code, code.replace(/^0+/, "")])]) {
+    try {
+      const t = new AbortController(); const timer = setTimeout(() => t.abort(), 9000);
+      signal?.addEventListener("abort", () => t.abort());
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(c)}.json?fields=${fields}`, { signal: t.signal });
+      clearTimeout(timer);
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j?.status !== 1 || !j.product) continue;
+      const p = j.product, n = p.nutriments || {};
+      const brand = String(p.brands || "").split(",")[0].trim();
+      const pname = String(p.product_name_en || p.product_name || "").trim();
+      const name = pname ? (brand && !pname.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${pname}` : pname) : brand;
+      let kcal = Number(n["energy-kcal_serving"]), serving = p.serving_size || "";
+      const per100 = Number(n["energy-kcal_100g"] ?? (n["energy_100g"] ? n["energy_100g"] / 4.184 : NaN));
+      if (!(kcal > 0) && per100 > 0 && Number(p.serving_quantity) > 0) kcal = per100 * Number(p.serving_quantity) / 100;
+      if (!(kcal > 0) && per100 > 0) { kcal = per100; serving = "100 g"; }
+      return { name, kcal: kcal > 0 ? Math.round(kcal) : 0, serving, found: true };
+    } catch (e) { if (signal?.aborted) throw e; }
+  }
+  return { found: false };
+}
+
+async function handleCode(code) {
+  const saved = findFoodByCode(code);
+  if (saved) {
+    openReview({ title: "Found in my foods", items: [{ name: saved.name, kcal: saved.kcal, serving: saved.serving, qty: 1, barcode: saved.barcode, foodId: saved.id }], source: "barcode" });
+    return;
+  }
+  const ctl = new AbortController();
+  thinkingSheet("Looking it up", `Barcode ${code}`, ctl);
+  let r;
+  try { r = await lookupOFF(code, ctl.signal); } catch (e) { return; }
+  if (ctl.signal.aborted) return;
+  if (r.found && r.kcal > 0 && r.name) {
+    openReview({ title: "Check and add", items: [{ name: r.name, kcal: r.kcal, serving: r.serving, qty: 1, barcode: code }], source: "barcode", note: "From Open Food Facts. Calories are per serving shown." });
+    return;
+  }
+  const partial = r.found ? r.name : "";
+  openReview({
+    title: partial ? "Calories missing" : "New product",
+    items: [{ name: partial, kcal: "", serving: "", qty: 1, barcode: code }], source: "barcode", warn: true,
+    note: hasKey() ? `${partial ? "This product has no calorie info in the database." : "This barcode isn't in the food database."} Take a photo of the nutrition label and Claude will read it, or type the calories in.`
+      : `${partial ? "This product has no calorie info in the database." : "This barcode isn't in the food database."} Enter the calories from the label. It'll be remembered next time you scan it.`,
+    labelPhoto: hasKey() ? { code, name: partial } : null,
+  });
+}
+
+async function handlePhoto(file, code = "", knownName = "") {
+  const ctl = new AbortController();
+  thinkingSheet("Reading the photo", "Checking for a barcode…", ctl);
+  let img, url;
+  try { ({ img, url } = await loadImage(file)); } catch (e) { closeSheet(); toast("That photo couldn't be opened. Try again."); return; }
+  if (!code) {
+    await waitForZXing(3000);
+    code = await decodeFrame(img);
+    if (ctl.signal.aborted) { URL.revokeObjectURL(url); return; }
+    if (code) {
+      const saved = findFoodByCode(code);
+      if (saved) { URL.revokeObjectURL(url); handleCode(code); return; }
+      $("#thinkMsg") && ($("#thinkMsg").textContent = `Barcode ${code}. Looking it up…`);
+      let r = { found: false };
+      try { r = await lookupOFF(code, ctl.signal); } catch (e) { URL.revokeObjectURL(url); return; }
+      if (r.found && r.kcal > 0 && r.name) {
+        URL.revokeObjectURL(url);
+        openReview({ title: "Check and add", items: [{ name: r.name, kcal: r.kcal, serving: r.serving, qty: 1, barcode: code }], source: "barcode", note: "From Open Food Facts. Calories are per serving shown." });
+        return;
+      }
+      if (r.found) knownName = r.name;
+    }
+  }
+  if (!hasKey()) {
+    URL.revokeObjectURL(url);
+    openReview({ title: code ? "New product" : "No barcode found", items: [{ name: knownName, kcal: "", serving: "", qty: 1, barcode: code }], source: "barcode", warn: true,
+      note: code ? "Enter the calories from the label. It'll be remembered next time you scan it." : "Try again with the barcode filling more of the photo, or add your API key in Settings so Claude can read labels." });
+    return;
+  }
+  $("#thinkMsg") && ($("#thinkMsg").textContent = "Claude is reading the package…");
+  const blob = await canvasBlob(toCanvas(img, 1568));
+  URL.revokeObjectURL(url);
+  const prompt = `You are the lookup step of a calorie tracker. The photo shows a packaged food or drink: its nutrition label, front, or barcode.${code ? ` Its barcode is ${code}.` : ""}${knownName ? ` A database lists it as "${knownName}".` : ""}
+Identify the product as specifically as you can (brand + product + flavor/size).
+If a nutrition label is visible, read calories per serving and the serving size exactly from it and set "source" to "label". Otherwise estimate one typical serving and set "source" to "estimate".
+Reply with only JSON in this shape:
+{"name":"Brand Product","serving":"1 bar (40 g)","kcal":190,"source":"label","confidence":"high","note":""}
+"confidence" is high, medium or low. "note" is one short sentence only if something is uncertain. If no food or drink is visible, use an empty name, kcal 0, and a note saying what photo would help.`;
+  try {
+    const r = await callClaude(prompt, { image: blob, signal: ctl.signal });
+    if (ctl.signal.aborted) return;
+    const name = String(r?.name || knownName || "").trim(), kcal = Math.round(Number(r?.kcal) || 0);
+    const low = String(r?.confidence || "").toLowerCase() === "low";
+    let note = r?.source === "label" ? "Read from the nutrition label by Claude." : "Estimated by Claude. Check the label if you can.";
+    if (low) note = "Claude wasn't sure about this one. Check the name and calories.";
+    if (r?.note) note += " " + String(r.note);
+    openReview({ title: name ? "Check and add" : "Couldn't identify it", items: [{ name, kcal: kcal || "", serving: String(r?.serving || ""), qty: 1, barcode: code }], source: r?.source === "label" ? "barcode" : "claude", note, warn: !name || low });
+  } catch (e) {
+    if (e?.name === "AbortError") return;
+    openReview({ title: "Enter it manually", items: [{ name: knownName, kcal: "", serving: "", qty: 1, barcode: code }], source: "barcode", note: e.message, warn: true });
+  }
+}
+async function waitForZXing(ms) { const end = Date.now() + ms; while (!window.ZXing && Date.now() < end) await new Promise(r => setTimeout(r, 100)); }
+
+/* ---------------- Ask Claude ---------------- */
+function openAsk() {
+  if (!hasKey()) { openSettings(); return; }
+  let photo = null, photoUrl = "", meal = defaultMeal(), text = "";
+  const draw = () => {
+    openSheet(`
+      <h3>Ask Claude</h3>
+      <p class="muted">Describe what you ate. Amounts help: "a large", "2 cups", "half".</p>
+      <textarea class="in" id="askText" placeholder="2 scrambled eggs, a slice of sourdough with butter, and an oat milk latte"></textarea>
+      <div class="thumb">${photo ? `<img src="${photoUrl}" alt="Meal photo"><button class="btn ghost" id="rmPhoto">Remove photo</button>` : `<button class="btn ghost" id="addPhoto">Add a photo of the meal</button>`}</div>
+      ${mealSeg(meal)}
+      <button class="btn primary" id="askGo">Estimate calories</button>
+    `, sheet => {
+      wireSeg(sheet, m => meal = m);
+      const ta = $("#askText", sheet);
+      ta.value = text; ta.addEventListener("input", () => { text = ta.value; });
+      if (!photo) setTimeout(() => ta.focus(), 60);
+      $("#addPhoto", sheet)?.addEventListener("click", () => pickPhoto($("#photoInput"), f => { photo = f; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = URL.createObjectURL(f); draw(); }));
+      $("#rmPhoto", sheet)?.addEventListener("click", () => { photo = null; URL.revokeObjectURL(photoUrl); photoUrl = ""; draw(); });
+      $("#askGo", sheet).onclick = () => {
+        const t = ta.value.trim();
+        if (!t && !photo) { toast("Describe the food or add a photo."); return; }
+        runEstimate(t, photo, meal);
+      };
+    });
+  };
+  draw();
+}
+async function runEstimate(text, photo, meal) {
+  const ctl = new AbortController();
+  thinkingSheet("Estimating", "Claude is working out the calories…", ctl);
+  let blob = null;
+  if (photo) { try { blob = await fileToJpeg(photo); } catch (e) {} }
+  const prompt = `You are the estimating step of a calorie tracker. Estimate calories for what this person ate.
+Their description: ${text ? JSON.stringify(text) : "(none, use the photo)"}${blob ? "\nA photo of the food is attached." : ""}
+Split it into separate food items. Use the amounts given; otherwise assume typical US portion sizes. Use standard nutrition-database values and round each item to the nearest 5 kcal.
+Reply with only JSON in this shape:
+{"items":[{"name":"2 large eggs, scrambled in butter","kcal":200}],"note":"One short sentence on the main assumption you made, or empty."}
+If nothing edible is described, return {"items":[],"note":"what to add"}.`;
+  try {
+    const r = await callClaude(prompt, { image: blob, signal: ctl.signal });
+    if (ctl.signal.aborted) return;
+    const items = (Array.isArray(r?.items) ? r.items : []).map(x => ({ name: String(x?.name || "").trim(), kcal: Math.round(Number(x?.kcal) || 0), qty: 1, serving: "" })).filter(x => x.name);
+    if (!items.length) { openReview({ title: "Nothing to add", items: [{ name: text, kcal: "", qty: 1 }], source: "manual", meal, note: String(r?.note || "Claude couldn't find a food in that. Enter the calories yourself."), warn: true }); return; }
+    openReview({ title: "Check and add", items, source: "claude", meal, note: ("Estimated by Claude. " + String(r?.note || "")).trim() });
+  } catch (e) {
+    if (e?.name === "AbortError") return;
+    openReview({ title: "Enter it manually", items: [{ name: text, kcal: "", qty: 1 }], source: "manual", meal, note: e.message, warn: true });
+  }
+}
+
+/* ---------------- Review ---------------- */
+function openReview(opts) {
+  const rv = { meal: opts.meal || defaultMeal(), remember: opts.remember !== false, items: opts.items.map(x => ({ ...x })) };
+  const isScan = rv.items.some(i => i.barcode) || opts.source === "barcode";
+  const totalOf = () => rv.items.reduce((s, i) => s + (Number(i.kcal) || 0) * (Number(i.qty) || 1), 0);
+  openSheet(`
+    <h3>${esc(opts.title)}</h3>
+    ${opts.note ? `<div class="callout${opts.warn ? " warn" : ""}">${esc(opts.note.trim())}</div>` : ""}
+    ${opts.labelPhoto ? `<button class="btn" id="rvLabel">Photo of nutrition label</button>` : ""}
+    <div id="rvItems"></div>
+    ${mealSeg(rv.meal)}
+    <label class="check"><input type="checkbox" id="rvRemember" ${rv.remember ? "checked" : ""}> ${rv.items.some(i => i.barcode) ? "Remember this barcode" : "Save to my foods"}</label>
+    <button class="btn primary" id="rvAdd"></button>
+  `, sheet => {
+    wireSeg(sheet, m => rv.meal = m);
+    $("#rvLabel", sheet)?.addEventListener("click", () => pickPhoto($("#camInput"), f => handlePhoto(f, opts.labelPhoto.code, rv.items[0]?.name || opts.labelPhoto.name)));
+    const box = $("#rvItems", sheet), add = $("#rvAdd", sheet);
+    const sync = () => {
+      add.disabled = !(rv.items.length && rv.items.every(i => String(i.name).trim() && i.kcal !== "" && Number(i.kcal) >= 0));
+      add.textContent = rv.items.length > 1 ? `Add ${rv.items.length} items · ${fmt(totalOf())} kcal` : `Add · ${fmt(totalOf())} kcal`;
+    };
+    const drawItems = () => {
+      box.innerHTML = rv.items.map((it, i) => `
+        <div class="ritem" data-i="${i}">
+          <div class="line">
+            <input class="in" data-k="name" id="rvName${i}" value="${esc(it.name)}" placeholder="Food name" aria-label="Food name">
+            <input class="in num kin" data-k="kcal" id="rvKcal${i}" type="number" inputmode="numeric" min="0" value="${esc(it.kcal)}" placeholder="kcal" aria-label="Calories">
+            ${rv.items.length > 1 ? `<button class="iconbtn" data-rm="${i}" aria-label="Remove ${esc(it.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : ""}
+          </div>
+          ${isScan ? `<div class="line" style="justify-content:space-between"><span class="meta">${it.serving ? "Per serving: " + esc(it.serving) : "Per serving"}${it.barcode ? ` · <span class="code">${esc(it.barcode)}</span>` : ""}</span><div class="stepper"><button type="button" data-q="-1" data-i="${i}" aria-label="Fewer servings">−</button><span class="num">${qtyText(it.qty || 1)}</span><button type="button" data-q="1" data-i="${i}" aria-label="More servings">+</button></div></div>` : ""}
+        </div>`).join("");
+      sync();
+    };
+    drawItems();
+    const firstEmpty = box.querySelector('input[data-k="kcal"]:placeholder-shown') || null;
+    if (firstEmpty && !opts.labelPhoto) setTimeout(() => (box.querySelector('input[data-k="name"]').value ? firstEmpty : box.querySelector('input[data-k="name"]')).focus(), 80);
+    box.addEventListener("input", e => {
+      const el = e.target.closest("[data-k]"); if (!el) return;
+      rv.items[Number(el.closest(".ritem").dataset.i)][el.dataset.k] = el.value; sync();
+    });
+    box.addEventListener("click", e => {
+      const rm = e.target.closest("[data-rm]");
+      if (rm) { rv.items.splice(Number(rm.dataset.rm), 1); drawItems(); return; }
+      const q = e.target.closest("[data-q]");
+      if (q) {
+        const it = rv.items[Number(q.dataset.i)], up = q.dataset.q === "1", cur = Number(it.qty) || 1;
+        it.qty = up ? (cur < 1 ? cur + 0.25 : cur + 0.5) : Math.max(0.25, cur - (cur <= 1 ? 0.25 : 0.5));
+        q.parentElement.querySelector("span").textContent = qtyText(it.qty); sync();
+      }
+    });
+    $("#rvRemember", sheet).addEventListener("change", e => rv.remember = e.target.checked);
+    add.onclick = () => {
+      const date = state.date;
+      const toAdd = rv.items.map(it => {
+        const kcal = Math.round(Number(it.kcal) || 0), name = String(it.name).trim();
+        let foodId = it.foodId || "";
+        if (rv.remember) foodId = rememberFood({ id: it.barcode || it.foodId || findFoodByName(name)?.id, name, kcal, serving: it.serving, barcode: it.barcode });
+        return { name, kcal, qty: Number(it.qty) || 1, serving: it.serving || "", meal: rv.meal, source: it.barcode ? "barcode" : (opts.source === "claude" ? "claude" : "manual"), barcode: it.barcode || "", foodId };
+      });
+      const ids = addItems(date, toAdd);
+      closeSheet();
+      toast(`Added ${toAdd.length > 1 ? toAdd.length + " items" : toAdd[0].name} · ${fmt(toAdd.reduce((s, i) => s + i.kcal * i.qty, 0))} kcal`, () => removeItems(date, ids));
+    };
+  });
+}
+
+/* ---------------- Wiring ---------------- */
+$("#prevDay").onclick = () => { state.date = addDays(state.date, -1); render(); };
+$("#nextDay").onclick = () => { if (state.date < state.today) { state.date = addDays(state.date, 1); render(); } };
+$("#week").addEventListener("click", e => { const b = e.target.closest("[data-day]"); if (!b || b.dataset.day > state.today) return; state.date = b.dataset.day; render(); });
+$("#goalBtn").onclick = openGoal;
+$("#settingsBtn").onclick = openSettings;
+$("#setupBtn").onclick = openSettings;
+$("#addBtn").onclick = openAdd;
+$("#askBtn").onclick = openAsk;
+$("#scanBtn").onclick = openScanner;
+$("#log").addEventListener("click", e => { const b = e.target.closest("[data-item]"); if (b) openEdit(b.dataset.item); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { if (scanStream) closeScanner(); return; }
+  const t = ymd(new Date());
+  if (t !== state.today) { const wasToday = state.date === state.today; state.today = t; if (wasToday) state.date = t; render(); }
+});
+
+Store.load();
+render();
+navigator.storage?.persist?.().catch(() => {});
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+const action = new URLSearchParams(location.search).get("action");
+if (action === "scan") openScanner(); else if (action === "ask") openAsk();
+if (action) history.replaceState(null, "", location.pathname);
+})();
+</script>
+</body>
+</html>
