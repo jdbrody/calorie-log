@@ -88,7 +88,7 @@ main .wrap{display:flex;flex-direction:column;gap:22px;padding-block:4px calc(12
 .wk[aria-disabled="true"]{cursor:default;opacity:.35}
 .footnote{font-size:.74rem;color:var(--muted);margin-top:8px;line-height:1.35}
 
-.log{display:flex;flex-direction:column;gap:18px}
+.log{display:flex;flex-direction:column;gap:18px;scroll-margin-top:calc(64px + env(safe-area-inset-top,0px))}
 .meal h2{margin:0 0 4px;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;display:flex;justify-content:space-between;color:var(--muted)}
 .items{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .item{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:11px 2px;border-bottom:1px solid var(--line)}
@@ -104,6 +104,14 @@ main .wrap{display:flex;flex-direction:column;gap:22px;padding-block:4px calc(12
 .iconbtn.del:hover{color:var(--over)}
 .iconbtn.del svg{width:19px;height:19px}
 .tag{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border:1px solid var(--line);border-radius:3px;margin-right:4px;color:var(--muted);vertical-align:1px}
+.loghead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:-12px;font-size:.88rem;color:var(--muted);min-height:32px}
+.linkbtn{border:0;background:none;color:var(--accent);font-weight:700;font-size:.88rem;padding:6px 2px;margin-left:auto}
+.pick{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;flex:none;color:transparent}
+.pick svg{width:14px;height:14px}
+.item[aria-pressed="true"] .pick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.item.static{cursor:default}
+.item.static:hover{background:none}
+.actions.pickbar .wrap{grid-template-columns:1fr 2fr}
 .empty{border:1.5px dashed var(--line);padding:22px 18px;text-align:center;color:var(--muted)}
 .empty strong{display:block;color:var(--ink);font-size:1.05rem;margin-bottom:4px}
 .setup{border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
@@ -248,11 +256,18 @@ textarea.in{min-height:96px;resize:vertical}
   </div>
 </main>
 
-<nav class="actions" aria-label="Add food">
+<nav class="actions" id="addBar" aria-label="Add food">
   <div class="wrap">
     <button class="act primary" id="scanBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><path d="M7 8v8M10 8v8M13 8v8M15.5 8v8M17.5 8v8"/></svg>Scan barcode</button>
     <button class="act" id="askBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Ask Claude</button>
     <button class="act" id="addBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add food</button>
+  </div>
+</nav>
+
+<nav class="actions pickbar" id="pickBar" aria-label="Bundle entries" hidden>
+  <div class="wrap">
+    <button class="act" id="pickCancel">Cancel</button>
+    <button class="act primary" id="pickGo" disabled>Bundle</button>
   </div>
 </nav>
 
@@ -342,7 +357,7 @@ function updateItem(date, id, patch) {
 function rememberFood(f) {
   const id = f.id || (f.barcode ? f.barcode : "f" + newId());
   const prev = state.foods.find(x => x.id === id);
-  const food = { id, name: f.name, kcal: Math.round(Number(f.kcal) || 0), serving: f.serving || "", barcode: f.barcode || "", uses: (prev?.uses || 0) + 1, lastUsed: Date.now() };
+  const food = { id, name: f.name, kcal: Math.round(Number(f.kcal) || 0), serving: f.serving || "", barcode: f.barcode || "", ...(f.parts?.length ? { parts: f.parts } : {}), uses: (prev?.uses || 0) + 1, lastUsed: Date.now() };
   state.foods = [food, ...state.foods.filter(x => x.id !== id)].slice(0, 500);
   Store.save();
   return id;
@@ -370,6 +385,8 @@ function render() {
   $("#remainK").textContent = over ? "Over goal by" : "Remaining";
   $("#remainVal").textContent = fmt(Math.abs(goal - total));
   $("#setupCard").hidden = hasKey();
+  if (picking && picking.date !== d) picking = null;
+  $("#addBar").hidden = !!picking; $("#pickBar").hidden = !picking;
 
   const items = dayItems(d);
   $("#mealRows").innerHTML = MEALS.map(m => {
@@ -392,7 +409,17 @@ function render() {
     log.innerHTML = `<div class="empty"><strong>Nothing logged ${d === state.today ? "yet today" : "for this day"}</strong>Scan a barcode, describe a meal for Claude to estimate, or add a food you've saved.</div>`;
     return;
   }
-  log.innerHTML = MEALS.map(m => {
+  if (picking) {
+    const live = new Set(items.map(i => i.id));
+    picking.ids.forEach(id => { if (!live.has(id)) picking.ids.delete(id); });
+    const n = picking.ids.size, k = items.filter(i => picking.ids.has(i.id)).reduce((s, i) => s + itemTotal(i), 0);
+    const go = $("#pickGo");
+    go.disabled = n < 2;
+    go.textContent = n < 2 ? "Pick 2 or more" : `Bundle ${n} items · ${fmt(k)} kcal`;
+  }
+  const head = picking ? `<div class="loghead"><span>Tap the entries to combine into one saved food.</span></div>`
+    : items.length >= 2 ? `<div class="loghead"><button class="linkbtn" data-pickstart>Bundle into a food</button></div>` : "";
+  log.innerHTML = head + MEALS.map(m => {
     const list = items.filter(i => i.meal === m);
     if (!list.length) return "";
     const t = list.reduce((s, i) => s + itemTotal(i), 0);
@@ -400,7 +427,9 @@ function render() {
       const bits = [];
       if (it.qty && it.qty !== 1) bits.push(`${qtyText(it.qty)} × ${fmt(it.kcal)}`);
       if (it.serving) bits.push(esc(it.serving));
+      if (it.parts?.length) bits.push(esc(partsText(it.parts)));
       const src = it.source === "claude" ? `<span class="tag">Est.</span>` : it.source === "barcode" ? `<span class="tag">Scan</span>` : "";
+      if (picking) return `<li><button class="item" data-item="${esc(it.id)}" aria-pressed="${picking.ids.has(it.id)}"><span class="pick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="nm"><div>${esc(it.name || "Food")}</div>${bits.length ? `<small>${bits.join(" · ")}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></button></li>`;
       return `<li><button class="item" data-item="${esc(it.id)}"><span class="nm"><div>${esc(it.name || "Food")}</div>${(src || bits.length) ? `<small>${src}${bits.join(" · ")}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></button><button class="iconbtn del" data-del="${esc(it.id)}" aria-label="Delete ${esc(it.name || "entry")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;
     }).join("")}</ul></div>`;
   }).join("");
@@ -421,7 +450,7 @@ function closeSheet() {
   sheetCleanup = null;
   $("#sheetRoot").innerHTML = "";
 }
-document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($("#scanRoot").firstChild) closeScanner(); else closeSheet(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($("#scanRoot").firstChild) closeScanner(); else if ($("#sheetRoot").firstChild) closeSheet(); else if (picking) stopPicking(); } });
 
 let toastTimer;
 function toast(msg, undo) {
@@ -459,8 +488,8 @@ function openAdd() {
     wireSeg(sheet, m => meal = m);
     const list = $("#foodList", sheet);
     const draw = () => {
-      const f = state.foods.filter(x => !q || x.name.toLowerCase().includes(q));
-      list.innerHTML = f.length ? f.slice(0, 80).map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${x.barcode ? `<span class="tag">Scan</span>` : ""}${esc(x.serving || "1 serving")}</small></span><span class="kc num">${fmt(x.kcal)}</span><span class="add-dot" aria-hidden="true">+</span></button></li>`).join("")
+      const f = state.foods.filter(x => !q || x.name.toLowerCase().includes(q) || x.parts?.some(p => p.name.toLowerCase().includes(q)));
+      list.innerHTML = f.length ? f.slice(0, 80).map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${x.barcode ? `<span class="tag">Scan</span>` : ""}${x.parts ? `<span class="tag">Bundle</span>${esc(partsText(x.parts))}` : esc(x.serving || "1 serving")}</small></span><span class="kc num">${fmt(x.kcal)}</span><span class="add-dot" aria-hidden="true">+</span></button></li>`).join("")
         : `<li class="muted" style="padding:12px 2px;font-size:.9rem">${state.foods.length ? "No saved food matches." : "Foods you scan or add show up here for one-tap logging."}</li>`;
     };
     draw();
@@ -470,7 +499,7 @@ function openAdd() {
       const f = state.foods.find(x => x.id === b.dataset.food); if (!f) return;
       const date = state.date;
       rememberFood(f);
-      const ids = addItems(date, [{ name: f.name, kcal: f.kcal, serving: f.serving, meal, source: f.barcode ? "barcode" : "food", foodId: f.id, barcode: f.barcode || "" }]);
+      const ids = addItems(date, [{ name: f.name, kcal: f.kcal, serving: f.serving, meal, source: f.parts ? "bundle" : f.barcode ? "barcode" : "food", foodId: f.id, barcode: f.barcode || "", ...(f.parts ? { parts: f.parts } : {}) }]);
       closeSheet();
       toast(`Added ${f.name} · ${fmt(f.kcal)} kcal`, () => removeItems(date, ids));
     });
@@ -500,6 +529,7 @@ function openEdit(id) {
       <div class="f" style="display:flex;flex-direction:column;gap:4px;font-size:.8rem;font-weight:700;color:var(--muted)">Servings<div class="stepper"><button type="button" id="qMinus" aria-label="Fewer servings">−</button><span class="num" id="qVal">${qtyText(qty)}</span><button type="button" id="qPlus" aria-label="More servings">+</button></div></div>
     </div>
     ${it.serving ? `<p class="meta">Serving: ${esc(it.serving)}</p>` : ""}
+    ${it.parts?.length ? `<p class="meta">Contains: ${esc(partsText(it.parts))}</p>` : ""}
     ${it.barcode ? `<p class="meta">Barcode <span class="code">${esc(it.barcode)}</span></p>` : ""}
     ${mealSeg(meal)}
     <div class="btns"><button class="btn danger" id="edDel">Delete</button><button class="btn primary" id="edSave">Save</button></div>
@@ -519,6 +549,50 @@ function openEdit(id) {
     del.onclick = () => {
       if (!armed) { armed = true; del.textContent = "Tap again to delete"; return; }
       closeSheet(); deleteItem(date, id);
+    };
+  });
+}
+
+/* ---------------- Bundle ---------------- */
+// Combine several logged entries into one saved food (e.g. an omelette from its ingredients).
+let picking = null; // { date, ids: Set } while choosing entries
+const partsText = parts => parts.map(p => p.name).join(" + ");
+function startPicking() { picking = { date: state.date, ids: new Set() }; render(); $("#log").scrollIntoView({ block: "start" }); }
+function stopPicking() { picking = null; render(); }
+function togglePick(id) { picking.ids.has(id) ? picking.ids.delete(id) : picking.ids.add(id); render(); }
+function openBundle() {
+  const date = state.date, chosen = dayItems(date).filter(it => picking?.ids.has(it.id));
+  if (chosen.length < 2) return;
+  const kcal = Math.round(chosen.reduce((s, it) => s + itemTotal(it), 0));
+  const parts = chosen.map(it => ({ name: it.name, kcal: it.kcal, qty: Number(it.qty) || 1, serving: it.serving || "" }));
+  openSheet(`
+    <h3>Bundle as a food</h3>
+    <label class="f">Name<input class="in" id="bnName" placeholder="e.g. Spinach omelette" autocomplete="off"></label>
+    <p class="meta" id="bnMsg" hidden></p>
+    <ul class="items">${chosen.map(it => `<li><div class="item static"><span class="nm"><div>${esc(it.name)}</div>${it.qty && it.qty !== 1 ? `<small>${qtyText(it.qty)} × ${fmt(it.kcal)}</small>` : ""}</span><span class="kc num">${fmt(itemTotal(it))}</span></div></li>`).join("")}</ul>
+    <div class="frow"><b>Total</b><b class="num">${fmt(kcal)} kcal</b></div>
+    <label class="check"><input type="checkbox" id="bnReplace" checked> Replace these ${chosen.length} entries in the log with it</label>
+    <button class="btn primary" id="bnSave" disabled>Save to my foods</button>
+  `, sheet => {
+    const nm = $("#bnName", sheet), msg = $("#bnMsg", sheet), save = $("#bnSave", sheet);
+    setTimeout(() => nm.focus(), 60);
+    nm.addEventListener("input", () => {
+      const name = nm.value.trim(), ex = name && findFoodByName(name);
+      save.disabled = !name;
+      msg.hidden = !ex; if (ex) msg.textContent = `Replaces your saved food "${ex.name}".`;
+    });
+    nm.addEventListener("keydown", e => { if (e.key === "Enter" && !save.disabled) save.click(); });
+    save.onclick = () => {
+      const name = nm.value.trim(); if (!name) return;
+      const prevItems = [...dayItems(date)], prevFoods = state.foods;
+      const foodId = rememberFood({ id: findFoodByName(name)?.id, name, kcal, parts });
+      picking = null;
+      if ($("#bnReplace", sheet).checked) {
+        removeItems(date, chosen.map(it => it.id));
+        addItems(date, [{ name, kcal, meal: chosen[0].meal, source: "bundle", foodId, parts }]);
+      } else render();
+      closeSheet();
+      toast(`Saved ${name} · ${fmt(kcal)} kcal`, () => { state.days[date] = { items: prevItems }; state.foods = prevFoods; Store.save(); render(); });
     };
   });
 }
@@ -1142,7 +1216,11 @@ $("#setupBtn").onclick = openSettings;
 $("#addBtn").onclick = openAdd;
 $("#askBtn").onclick = openAsk;
 $("#scanBtn").onclick = openScanner;
+$("#pickCancel").onclick = stopPicking;
+$("#pickGo").onclick = openBundle;
 $("#log").addEventListener("click", e => {
+  if (e.target.closest("[data-pickstart]")) { startPicking(); return; }
+  if (picking) { const b = e.target.closest("[data-item]"); if (b) togglePick(b.dataset.item); return; }
   const del = e.target.closest("[data-del]"); if (del) { deleteItem(state.date, del.dataset.del); return; }
   const b = e.target.closest("[data-item]"); if (b) openEdit(b.dataset.item);
 });
