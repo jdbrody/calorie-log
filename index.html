@@ -154,11 +154,13 @@ textarea.in{min-height:96px;resize:vertical}
 .foodlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:42vh;overflow:auto;border-top:1px solid var(--line)}
 .foodlist li{display:flex}
 .foodlist .item{padding:10px 4px}
+.fhead{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;font-weight:700;color:var(--muted);margin-bottom:-12px}
+.chev{width:18px;height:18px;color:var(--muted);flex:none}
 .add-dot{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);display:grid;place-items:center;font-weight:900;flex:none}
 .ritem{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
 .ritem .line{display:flex;gap:8px;align-items:center}
 .ritem .line .in{flex:1}
-.ritem .kin{width:96px;flex:none;text-align:right}
+.ritem .line .kin{width:96px;flex:none;text-align:right}
 .meta{font-size:.8rem;color:var(--muted)}
 .code{font-family:var(--f-mono);font-size:.82rem;letter-spacing:.04em}
 .callout{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:.88rem}
@@ -362,6 +364,8 @@ function rememberFood(f) {
   Store.save();
   return id;
 }
+const foodMatches = (f, q) => !q || f.name.toLowerCase().includes(q) || !!f.parts?.some(p => p.name.toLowerCase().includes(q));
+const foodSub = f => `${f.barcode ? `<span class="tag">Scan</span>` : ""}${f.parts ? `<span class="tag">Bundle</span>${esc(partsText(f.parts))}` : esc(f.serving || "1 serving")}`;
 const findFoodByName = name => { const n = name.trim().toLowerCase(); return state.foods.find(f => !f.barcode && f.name.trim().toLowerCase() === n); };
 const findFoodByCode = code => state.foods.find(f => f.barcode && (f.barcode === code || f.barcode.replace(/^0+/, "") === code.replace(/^0+/, "")));
 
@@ -475,7 +479,8 @@ function openAdd() {
   openSheet(`
     <h3>Add food</h3>
     ${mealSeg(meal)}
-    <label class="f">My foods<input class="in" id="foodSearch" type="search" placeholder="Search saved foods" autocomplete="off"></label>
+    <div class="fhead"><span>My foods</span>${state.foods.length ? `<button class="linkbtn" id="manageFoods">Edit</button>` : ""}</div>
+    <input class="in" id="foodSearch" type="search" placeholder="Search saved foods" autocomplete="off" aria-label="Search saved foods">
     <ul class="foodlist" id="foodList"></ul>
     <h4>Enter manually</h4>
     <div class="row2">
@@ -488,11 +493,12 @@ function openAdd() {
     wireSeg(sheet, m => meal = m);
     const list = $("#foodList", sheet);
     const draw = () => {
-      const f = state.foods.filter(x => !q || x.name.toLowerCase().includes(q) || x.parts?.some(p => p.name.toLowerCase().includes(q)));
-      list.innerHTML = f.length ? f.slice(0, 80).map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${x.barcode ? `<span class="tag">Scan</span>` : ""}${x.parts ? `<span class="tag">Bundle</span>${esc(partsText(x.parts))}` : esc(x.serving || "1 serving")}</small></span><span class="kc num">${fmt(x.kcal)}</span><span class="add-dot" aria-hidden="true">+</span></button></li>`).join("")
+      const f = state.foods.filter(x => foodMatches(x, q));
+      list.innerHTML = f.length ? f.slice(0, 80).map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${foodSub(x)}</small></span><span class="kc num">${fmt(x.kcal)}</span><span class="add-dot" aria-hidden="true">+</span></button></li>`).join("")
         : `<li class="muted" style="padding:12px 2px;font-size:.9rem">${state.foods.length ? "No saved food matches." : "Foods you scan or add show up here for one-tap logging."}</li>`;
     };
     draw();
+    $("#manageFoods", sheet)?.addEventListener("click", () => openFoods());
     $("#foodSearch", sheet).addEventListener("input", e => { q = e.target.value.trim().toLowerCase(); draw(); });
     list.addEventListener("click", e => {
       const b = e.target.closest("[data-food]"); if (!b) return;
@@ -593,6 +599,99 @@ function openBundle() {
       } else render();
       closeSheet();
       toast(`Saved ${name} · ${fmt(kcal)} kcal`, () => { state.days[date] = { items: prevItems }; state.foods = prevFoods; Store.save(); render(); });
+    };
+  });
+}
+
+/* ---------------- My foods ---------------- */
+// Browse, edit and delete saved foods. Logged entries keep their own copy, so changes here don't rewrite history.
+function openFoods(q = "") {
+  openSheet(`
+    <h3>My foods</h3>
+    <input class="in" id="mfSearch" type="search" placeholder="Search saved foods" autocomplete="off" aria-label="Search saved foods" value="${esc(q)}">
+    <ul class="foodlist" id="mfList"></ul>
+    <p class="meta">Changes here don't alter entries you've already logged.</p>
+  `, sheet => {
+    const list = $("#mfList", sheet);
+    const draw = () => {
+      const t = q.trim().toLowerCase();
+      const f = state.foods.filter(x => foodMatches(x, t)).sort((a, b) => a.name.localeCompare(b.name));
+      list.innerHTML = f.length ? f.map(x => `<li><button class="item" data-food="${esc(x.id)}"><span class="nm"><div>${esc(x.name)}</div><small>${foodSub(x)}</small></span><span class="kc num">${fmt(x.kcal)}</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></li>`).join("")
+        : `<li class="muted" style="padding:12px 2px;font-size:.9rem">${state.foods.length ? "No saved food matches." : "No saved foods yet. Foods you scan, add or bundle show up here."}</li>`;
+    };
+    draw();
+    $("#mfSearch", sheet).addEventListener("input", e => { q = e.target.value; draw(); });
+    list.addEventListener("click", e => { const b = e.target.closest("[data-food]"); if (b) openFoodEdit(b.dataset.food, q); });
+  });
+}
+function openFoodEdit(id, q = "") {
+  const food = state.foods.find(x => x.id === id); if (!food) return;
+  // Each bundle part is edited as one line with its total calories (qty folded in).
+  const parts = food.parts ? food.parts.map(p => ({ ...p, total: Math.round((Number(p.kcal) || 0) * (Number(p.qty) || 1)) })) : null;
+  let armed = false;
+  openSheet(`
+    <h3>Edit food</h3>
+    <label class="f">Name<input class="in" id="feName" value="${esc(food.name)}" autocomplete="off"></label>
+    <p class="meta" id="feMsg" hidden></p>
+    ${parts ? `<h4>Contains</h4><div id="feParts"></div><button class="btn ghost" id="fePartAdd" type="button">Add an ingredient</button><div class="frow"><b>Total</b><b class="num" id="feTotal"></b></div>`
+      : `<div class="row2"><label class="f">Serving<input class="in" id="feServing" value="${esc(food.serving)}" placeholder="e.g. 1 cup" autocomplete="off"></label><label class="f">kcal<input class="in num" id="feKcal" type="number" inputmode="numeric" min="0" value="${esc(food.kcal)}"></label></div>`}
+    ${food.barcode ? `<p class="meta">Barcode <span class="code">${esc(food.barcode)}</span></p>` : ""}
+    <div class="btns"><button class="btn danger" id="feDel">Delete</button><button class="btn primary" id="feSave">Save</button></div>
+  `, sheet => {
+    const nm = $("#feName", sheet), msg = $("#feMsg", sheet), save = $("#feSave", sheet), box = $("#feParts", sheet);
+    const okKcal = v => v !== "" && Number(v) >= 0;
+    const sync = () => {
+      const name = nm.value.trim(), ex = !food.barcode && name && findFoodByName(name), clash = ex && ex.id !== id;
+      msg.hidden = !clash; if (clash) msg.textContent = `You already have a food named "${ex.name}".`;
+      const valid = parts ? parts.length && parts.every(p => String(p.name).trim() && okKcal(p.total)) : okKcal($("#feKcal", sheet).value);
+      save.disabled = !name || clash || !valid;
+      if (parts) $("#feTotal", sheet).textContent = `${fmt(parts.reduce((s, p) => s + (Number(p.total) || 0), 0))} kcal`;
+    };
+    const drawParts = () => {
+      box.innerHTML = parts.map((p, i) => `
+        <div class="ritem" data-i="${i}"><div class="line">
+          <input class="in" data-k="name" value="${esc(p.name)}" placeholder="Ingredient" aria-label="Ingredient name">
+          <input class="in num kin" data-k="total" type="number" inputmode="numeric" min="0" value="${esc(p.total)}" placeholder="kcal" aria-label="Calories">
+          ${parts.length > 1 ? `<button class="iconbtn" type="button" data-rm="${i}" aria-label="Remove ${esc(p.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : ""}
+        </div></div>`).join("");
+      sync();
+    };
+    if (parts) {
+      drawParts();
+      box.addEventListener("input", e => { const el = e.target.closest("[data-k]"); if (!el) return; parts[Number(el.closest(".ritem").dataset.i)][el.dataset.k] = el.value; sync(); });
+      box.addEventListener("click", e => { const rm = e.target.closest("[data-rm]"); if (rm) { parts.splice(Number(rm.dataset.rm), 1); drawParts(); } });
+      $("#fePartAdd", sheet).onclick = () => { parts.push({ name: "", total: "", qty: 1, serving: "" }); drawParts(); box.querySelector(".ritem:last-child input").focus(); };
+    } else $("#feKcal", sheet).addEventListener("input", sync);
+    nm.addEventListener("input", sync);
+    sync();
+    save.onclick = () => {
+      const name = nm.value.trim();
+      let next;
+      if (parts) {
+        const kept = parts.map(p => {
+          const total = Math.round(Number(p.total) || 0), pname = String(p.name).trim();
+          const same = Number(p.qty) > 0 && total === Math.round((Number(p.kcal) || 0) * Number(p.qty));
+          return same ? { name: pname, kcal: p.kcal, qty: p.qty, serving: p.serving || "" } : { name: pname, kcal: total, qty: 1, serving: "" };
+        });
+        next = { ...food, name, parts: kept, kcal: Math.round(kept.reduce((s, p) => s + p.kcal * p.qty, 0)) };
+      } else {
+        next = { ...food, name, serving: $("#feServing", sheet).value.trim(), kcal: Math.max(0, Math.round(Number($("#feKcal", sheet).value) || 0)) };
+      }
+      state.foods = state.foods.map(x => x.id === id ? next : x);
+      Store.save(); openFoods(q); toast(`Saved ${name}`);
+    };
+    const del = $("#feDel", sheet);
+    del.onclick = () => {
+      if (!armed) { armed = true; del.textContent = "Tap again to delete"; return; }
+      const at = state.foods.findIndex(x => x.id === id);
+      state.foods = state.foods.filter(x => x.id !== id);
+      Store.save(); openFoods(q);
+      toast(`Deleted ${food.name}`, () => {
+        if (state.foods.some(x => x.id === id)) return;
+        state.foods.splice(Math.min(at, state.foods.length), 0, food);
+        Store.save();
+        if ($("#mfList")) openFoods(q);
+      });
     };
   });
 }
@@ -735,6 +834,9 @@ function openSettings() {
     <div class="keyrow"><input class="in" id="keyIn" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(state.apiKey)}"><button class="btn ghost" id="keyShow" type="button">Show</button></div>
     <div class="btns"><button class="btn primary" id="keySave">Save and test key</button>${state.apiKey ? `<button class="btn ghost" id="keyRemove">Remove</button>` : ""}</div>
     <p class="meta" id="keyMsg">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> under API keys. You'll need to add a little credit under Billing first.</p>
+    <h4>My foods</h4>
+    <p class="meta">Rename foods, fix calories, change what's in a bundle, or delete foods you no longer use.</p>
+    <button class="btn ghost" id="foodsBtn">Manage my foods${state.foods.length ? ` (${state.foods.length})` : ""}</button>
     <h4>Your data</h4>
     <p class="meta">Your log is stored on this phone. Save a backup now and then, or before switching phones.</p>
     <div class="btns"><button class="btn ghost" id="exportBtn">Save backup</button><button class="btn ghost" id="importBtn">Restore backup</button></div>
@@ -753,6 +855,7 @@ function openSettings() {
       }
     };
     $("#keyRemove", sheet)?.addEventListener("click", () => { state.apiKey = ""; Store.saveKey(); render(); closeSheet(); toast("API key removed"); });
+    $("#foodsBtn", sheet).onclick = () => openFoods();
     $("#exportBtn", sheet).onclick = exportBackup;
     $("#importBtn", sheet).onclick = () => $("#importInput").click();
   });

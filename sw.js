@@ -1,5 +1,5 @@
 // Offline cache for the app shell. API calls (Open Food Facts, Anthropic) always go to the network.
-const VERSION = "calorie-log-v3";
+const VERSION = "calorie-log-v4";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./zxing.min.js", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
